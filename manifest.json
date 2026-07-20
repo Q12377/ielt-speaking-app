@@ -1,0 +1,19 @@
+{
+  "name": "雅思口语练习",
+  "short_name": "雅思口语",
+  "description": "极限省流雅思口语练习 PWA，支持本地录音与离线使用",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f1ea",
+  "theme_color": "#4a7c59",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

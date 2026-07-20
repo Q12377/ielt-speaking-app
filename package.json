@@ -1,0 +1,11 @@
+{
+  "name": "ielts-speaking-practice",
+  "version": "1.0.0",
+  "description": "极限省流雅思口语练习 PWA（纯原生 + Vercel Serverless）",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {}
+}
