@@ -1,7 +1,7 @@
 // Vercel Serverless Function: /api/evaluate
 // 流程：前端传 Base64 音频 → 步骤A 语音转文字 → 步骤B 智谱 glm-4-flash 评分
 // 零依赖：JWT 用 Node 内置 crypto 生成；Whisper 兜底用 Node 内置 FormData/Blob。
-const crypto = require('crypto');
+// const crypto = require('crypto');
 
 function generateToken(apiKey) {
   const [id, secret] = apiKey.split('.');
@@ -66,7 +66,7 @@ function extractJSON(s) {
   } catch (e) { return null; }
 }
 
-module.exports = async (req, res) => {
+// module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method !== 'POST') {
