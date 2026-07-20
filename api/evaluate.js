@@ -1,18 +1,26 @@
-// Vercel Serverless Function: /api/evaluate
-// 流程：前端传 Base64 音频 → 步骤A 语音转文字 → 步骤B 智谱 glm-4-flash 评分
-// 零依赖：JWT 用 Node 内置 crypto 生成；Whisper 兜底用 Node 内置 FormData/Blob。
-// const crypto = require('crypto');
+// api/evaluate.js — Vercel Serverless Function (Node.js)
+// 接收前端 Base64 音频 → 步骤A 语音转文字 → 步骤B 智谱 GLM 评分
+// 纯 Node 后端：使用 require / process.env / Buffer，绝不含有任何浏览器代码。
+const crypto = require('crypto');
 
+// 用 Node 内置 crypto 生成智谱 JWT（无需任何第三方依赖）
 function generateToken(apiKey) {
   const [id, secret] = apiKey.split('.');
   if (!id || !secret) throw new Error('ZHIPU_API_KEY 格式应为 id.secret');
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'HS256', sign_type: 'SIGN' };
   const payload = { api_key: id, exp: now + 3600, timestamp: now };
-  const b64 = obj => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
   const data = b64(header) + '.' + b64(payload);
   const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
   return data + '.' + sig;
+}
+
+// 统一设置 CORS，允许前端跨域访问
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 // 步骤A-1：智谱 glm-4-audio 多模态转写（需账号已开通音频模型）
@@ -36,17 +44,12 @@ async function transcribeWithZhipu(audioDataUrl, token) {
   return (data.choices && data.choices[0].message.content || '').trim();
 }
 
-// 步骤A-2：OpenAI Whisper 兜底（可选，需在 Vercel 配置 OPENAI_API_KEY）
-async function transcribeWithWhisper(audioDataUrl) {
+// 步骤A-2：OpenAI Whisper 兜底（可选，在 Vercel 配置 OPENAI_API_KEY 后启用）
+async function transcribeWithWhisper(audioBuffer) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
-  const [meta, b64] = audioDataUrl.split(',');
-  const mimeMatch = meta.match(/data:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
-  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
-  const buf = Buffer.from(b64, 'base64');
   const form = new FormData();
-  form.append('file', new Blob([buf], { type: mime }), 'audio.' + ext);
+  form.append('file', new Blob([audioBuffer]), 'audio.webm');
   form.append('model', 'whisper-1');
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -60,15 +63,16 @@ async function transcribeWithWhisper(audioDataUrl) {
 
 // 从模型文本中安全提取 JSON
 function extractJSON(s) {
-  try {
-    const m = s.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : null;
-  } catch (e) { return null; }
+  try { const m = s.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; }
+  catch (e) { return null; }
 }
 
-// module.exports = async (req, res) => {
+module.exports = async (req, res) => {
+  setCors(res);
   res.setHeader('Content-Type', 'application/json');
 
+  // 预检请求
+  if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
   if (req.method !== 'POST') {
     res.statusCode = 405;
     res.end(JSON.stringify({ error: '仅支持 POST' }));
@@ -82,10 +86,11 @@ function extractJSON(s) {
     return;
   }
 
+  // 解析请求体（Vercel 默认已解析 JSON，兼容字符串情况）
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
   body = body || {};
-  const audio = body.audio;
+  const audio = body.audio;                 // 前端传来的 data URL: data:audio/webm;base64,xxxx
   const topic = (body.topic || '').toString().slice(0, 500);
   if (!audio) {
     res.statusCode = 400;
@@ -93,6 +98,7 @@ function extractJSON(s) {
     return;
   }
 
+  // 生成智谱访问令牌
   let token;
   try { token = generateToken(apiKey); }
   catch (e) {
@@ -101,18 +107,19 @@ function extractJSON(s) {
     return;
   }
 
+  // Node 原生：Base64 → Buffer（二进制数据），可用于 Whisper 等需要文件的接口
+  const base64 = audio.includes(',') ? audio.split(',')[1] : audio;
+  const audioBuffer = Buffer.from(base64, 'base64');
+
   // ===== 步骤A：语音转文字 =====
   let transcript = '';
   try {
     transcript = await transcribeWithZhipu(audio, token);
   } catch (e) {
     // 智谱音频模型不可用 → 尝试 Whisper → 仍失败则模拟（保证流程可演示）
-    try {
-      const w = await transcribeWithWhisper(audio);
-      if (w) transcript = w;
-    } catch (_) { /* ignore */ }
+    try { const w = await transcribeWithWhisper(audioBuffer); if (w) transcript = w; } catch (_) { /* ignore */ }
     if (!transcript) {
-      transcript = '[模拟转写] 这是一段模拟转写文本，因为未配置可用的语音识别（请确认 ZHIPU 已开通 glm-4-audio，或在 Vercel 配置 OPENAI_API_KEY 启用 Whisper 兜底）。原音频已成功上传，仅转写步骤被模拟。';
+      transcript = '[模拟转写] 未配置可用的语音识别（请确认 ZHIPU 已开通 glm-4-audio，或在 Vercel 配置 OPENAI_API_KEY 启用 Whisper）。原音频已成功上传，仅转写步骤被模拟。';
     }
   }
 

@@ -1,0 +1,21 @@
+# ===== 依赖（Vercel 会自动安装，无需提交） =====
+node_modules/
+
+# ===== Vercel 本地构建缓存 =====
+.vercel/
+
+# ===== 密钥 / 环境变量：绝对禁止提交进 Git！ =====
+.env
+.env.*
+*.local
+
+# ===== 日志 =====
+*.log
+npm-debug.log*
+
+# ===== 系统 / 编辑器垃圾文件 =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

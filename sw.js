@@ -1,9 +1,10 @@
 // Service Worker：仅缓存静态应用外壳，实现离线秒开。
 // 注意：/api/ 请求一律走网络，绝不缓存（避免返回过期内容）。
-const CACHE = 'ielts-shell-v1';
+const CACHE = 'ielts-shell-v2';
 const ASSETS = [
   '/',
   '/index.html',
+  '/chat.js',
   '/manifest.json',
   '/icon.svg'
 ];
